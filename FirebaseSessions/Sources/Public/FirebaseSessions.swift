@@ -24,11 +24,6 @@ private enum GoogleDataTransportConfig {
   static let sessionsTarget = GDTCORTarget.FLL
 }
 
-@objc(FIRSessionsProvider)
-protocol SessionsProvider {
-  @objc static func sessions() -> Void
-}
-
 @objc(FIRSessions) final class Sessions: NSObject, Library, SessionsProvider {
   // MARK: - Private Variables
 
@@ -41,6 +36,10 @@ protocol SessionsProvider {
   private let identifiers: Identifiers
   private let appInfo: ApplicationInfo
   private let settings: SessionsSettings
+
+  /// Constants
+  static let SessionIDChangedNotificationName = Notification
+    .Name("SessionIDChangedNotificationName")
 
   // MARK: - Initializers
 
@@ -93,12 +92,35 @@ protocol SessionsProvider {
       // On each session start, first update Settings if expired
       self.settings.updateSettings()
       self.identifiers.generateNewSessionID()
+      NotificationCenter.default.post(name: Sessions.SessionIDChangedNotificationName,
+                                      object: nil)
       let event = SessionStartEvent(identifiers: self.identifiers, appInfo: self.appInfo)
       DispatchQueue.global().async {
         self.coordinator.attemptLoggingSessionStart(event: event) { result in
         }
       }
     }
+  }
+
+  // MARK: - SessionsProvider
+
+  func register(subscriber: SessionsSubscriber) {
+    Logger
+      .logDebug(
+        "Registering Sessions SDK subscriber with name: \(subscriber.sessionsSubscriberName), data collection enabled: \(subscriber.isDataCollectionEnabled)"
+      )
+
+    NotificationCenter.default.addObserver(
+      forName: Sessions.SessionIDChangedNotificationName,
+      object: nil,
+      queue: nil
+    ) { notification in
+      subscriber.onSessionIDChanged(self.identifiers.sessionID)
+    }
+
+    // Immediately call the callback because the Sessions SDK starts
+    // before subscribers, so subscribers will miss the first Notification
+    subscriber.onSessionIDChanged(identifiers.sessionID)
   }
 
   // MARK: - Library conformance
@@ -114,8 +136,4 @@ protocol SessionsProvider {
         return self.init(appID: app.options.googleAppID, installations: installations)
       }]
   }
-
-  // MARK: - SessionsProvider conformance
-
-  static func sessions() {}
 }
