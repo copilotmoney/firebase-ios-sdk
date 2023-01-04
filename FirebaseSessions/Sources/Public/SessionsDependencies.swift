@@ -13,11 +13,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 import Foundation
 
-// Sessions Provider is the Session SDK's internal
-// interface for other 1P SDKs to talk to.
-@objc(FIRSessionsProvider)
-public protocol SessionsProvider {
-  @objc func register(subscriber: SessionsSubscriber)
+// Sessions Dependencies determines when a dependent SDK is
+// installed in the app. The Sessions SDK uses this to figure
+// out which dependencies to wait for to getting the data
+// collection state.
+//
+// This is important because the Sessions SDK starts up before
+
+@objc(FIRSessionsDependencies)
+public class SessionsDependencies: NSObject {
+  static var dependencies: Set<SessionsSubscriberName> = Set<SessionsSubscriberName>()
+
+  @objc public static func addDependency(name: SessionsSubscriberName) {
+    SessionsDependencies.dependencies.insert(name)
+  }
 }

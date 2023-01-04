@@ -78,6 +78,17 @@ class SessionStartEvent: NSObject, GDTCOREventDataObject {
     proto.session_data.data_collection_status.session_sampling_rate = samplingRate
   }
 
+  func set(subscriber: SessionsSubscriberName, dataCollectionState: firebase_appquality_sessions_DataCollectionState) {
+    switch subscriber {
+    case .Crashlytics:
+      proto.session_data.data_collection_status.crashlytics = dataCollectionState
+    case .Performance:
+      proto.session_data.data_collection_status.performance = dataCollectionState
+    default:
+      Logger.logWarning("Attempted to set Data Collection status for unknown Subscriber: \(subscriber)")
+    }
+  }
+
   // MARK: - GDTCOREventDataObject
 
   func transportBytes() -> Data {

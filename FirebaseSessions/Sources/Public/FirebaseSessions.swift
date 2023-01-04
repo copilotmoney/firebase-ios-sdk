@@ -18,6 +18,7 @@ import Foundation
 @_implementationOnly import FirebaseCoreExtension
 @_implementationOnly import FirebaseInstallations
 @_implementationOnly import GoogleDataTransport
+@_implementationOnly import Promises
 
 private enum GoogleDataTransportConfig {
   static let sessionsLogSource = "1974"
@@ -36,6 +37,11 @@ private enum GoogleDataTransportConfig {
   private let identifiers: Identifiers
   private let appInfo: ApplicationInfo
   private let settings: SessionsSettings
+
+  /// Subscribers
+  private var subscribers: [SessionsSubscriber] = []
+  private var subscriberPromises: [SessionsSubscriberName: Promise<()>] = [:]
+  private let dataCollectionPromise: Promise<()> = Promise<()>.pending()
 
   /// Constants
   static let SessionIDChangedNotificationName = Notification
@@ -88,17 +94,63 @@ private enum GoogleDataTransportConfig {
 
     super.init()
 
+    SessionsDependencies.dependencies.forEach { subscriberName in
+      self.subscriberPromises[subscriberName] = Promise<()>.pending()
+    }
+
+    Logger.logDebug("Expecting subscriptions from: \(SessionsDependencies.dependencies)")
+
     self.initiator.beginListening {
-      // On each session start, first update Settings if expired
-      self.settings.updateSettings()
+      // Generating a Session ID early is important as Subscriber
+      // SDKs will need to read it immediately upon registration.
       self.identifiers.generateNewSessionID()
       NotificationCenter.default.post(name: Sessions.SessionIDChangedNotificationName,
                                       object: nil)
       let event = SessionStartEvent(identifiers: self.identifiers, appInfo: self.appInfo)
-      DispatchQueue.global().async {
+
+      all(self.subscriberPromises.values).then(on: .global(qos: .background)) { _ in
+        Logger.logDebug("All Subscribers have registered")
+
+        guard self.isAnyDataCollectionEnabled() else {
+          Logger.logDebug("Data Collection is disabled for all subscribers. Skipping this Session Event")
+          return
+        }
+
+        Logger.logDebug("Data Collection is enabled for at least one Subscriber")
+
+        // Fetch settings if they have expired
+        self.settings.updateSettings()
+
+        self.addEventDataCollectionState(event: event)
+
         self.coordinator.attemptLoggingSessionStart(event: event) { result in
+
         }
       }
+    }
+  }
+
+  func isAnyDataCollectionEnabled() -> Bool {
+    for subscriber in self.subscribers {
+      if subscriber.isDataCollectionEnabled {
+        return true
+      }
+    }
+    return false
+  }
+
+  func getDataCollectionState(_ isDataCollectionEnabled: Bool) -> firebase_appquality_sessions_DataCollectionState {
+    if isDataCollectionEnabled {
+      return firebase_appquality_sessions_DataCollectionState_COLLECTION_ENABLED
+    } else {
+      return firebase_appquality_sessions_DataCollectionState_COLLECTION_DISABLED
+    }
+  }
+
+  func addEventDataCollectionState(event: SessionStartEvent) {
+    self.subscribers.forEach { subscriber in
+      event.set(subscriber: subscriber.sessionsSubscriberName,
+                dataCollectionState: getDataCollectionState(subscriber.isDataCollectionEnabled))
     }
   }
 
@@ -117,10 +169,22 @@ private enum GoogleDataTransportConfig {
     ) { notification in
       subscriber.onSessionIDChanged(self.identifiers.sessionID)
     }
-
     // Immediately call the callback because the Sessions SDK starts
     // before subscribers, so subscribers will miss the first Notification
     subscriber.onSessionIDChanged(identifiers.sessionID)
+
+    self.subscribers.append(subscriber)
+    self.subscriberPromises[subscriber.sessionsSubscriberName]?.fulfill(())
+//    let allDependenciesSubscribed = self.subscribers.allSatisfy { subscriber in
+//      return SessionsDependencies.dependencies.contains(subscriber.sessionsSubscriberName)
+//    }
+//    if allDependenciesSubscribed {
+//      self.subscribers.forEach { subscriber in
+//        if subscriber.isDataCollectionEnabled {
+//          self.dataCollectionPromise.fulfill(())
+//        }
+//      }
+//    }
   }
 
   // MARK: - Library conformance
