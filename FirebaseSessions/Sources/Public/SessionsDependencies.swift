@@ -21,7 +21,7 @@ import Foundation
 // collection state.
 //
 // This is important because the Sessions SDK starts up before
-
+// dependent SDKs
 @objc(FIRSessionsDependencies)
 public class SessionsDependencies: NSObject {
   static var dependencies: Set<SessionsSubscriberName> = .init()
