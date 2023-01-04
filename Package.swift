@@ -1094,7 +1094,6 @@ let package = Package(
         .product(name: "GULEnvironment", package: "GoogleUtilities"),
       ],
       path: "FirebaseSessions/Sources",
-      publicHeadersPath: "Public",
       cSettings: [
         .headerSearchPath(".."),
         .define("DISPLAY_VERSION", to: firebaseVersion),
