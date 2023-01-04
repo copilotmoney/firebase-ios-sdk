@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 import Foundation
 
 // Sessions Dependencies determines when a dependent SDK is
@@ -25,7 +24,7 @@ import Foundation
 
 @objc(FIRSessionsDependencies)
 public class SessionsDependencies: NSObject {
-  static var dependencies: Set<SessionsSubscriberName> = Set<SessionsSubscriberName>()
+  static var dependencies: Set<SessionsSubscriberName> = .init()
 
   @objc public static func addDependency(name: SessionsSubscriberName) {
     SessionsDependencies.dependencies.insert(name)

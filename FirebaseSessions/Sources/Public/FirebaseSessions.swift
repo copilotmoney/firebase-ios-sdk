@@ -39,9 +39,12 @@ private enum GoogleDataTransportConfig {
   private let settings: SessionsSettings
 
   /// Subscribers
+  /// `subscribers` are used to determine the Data Collection state of the Sessions SDK.
+  /// If any Subscribers has Data Collection enabled, the Sessions SDK will send events
   private var subscribers: [SessionsSubscriber] = []
-  private var subscriberPromises: [SessionsSubscriberName: Promise<()>] = [:]
-  private let dataCollectionPromise: Promise<()> = Promise<()>.pending()
+  /// `subscriberPromises` are used to wait until all Subscribers have registered
+  /// themselves. Subscribers must have Data Collection state available upon registering.
+  private var subscriberPromises: [SessionsSubscriberName: Promise<Void>] = [:]
 
   /// Constants
   static let SessionIDChangedNotificationName = Notification
@@ -95,7 +98,7 @@ private enum GoogleDataTransportConfig {
     super.init()
 
     SessionsDependencies.dependencies.forEach { subscriberName in
-      self.subscriberPromises[subscriberName] = Promise<()>.pending()
+      self.subscriberPromises[subscriberName] = Promise<Void>.pending()
     }
 
     Logger.logDebug("Expecting subscriptions from: \(SessionsDependencies.dependencies)")
@@ -108,11 +111,14 @@ private enum GoogleDataTransportConfig {
                                       object: nil)
       let event = SessionStartEvent(identifiers: self.identifiers, appInfo: self.appInfo)
 
+      // Wait until all subscriber promises have been fulfilled before
+      // doing any data collection.
       all(self.subscriberPromises.values).then(on: .global(qos: .background)) { _ in
-        Logger.logDebug("All Subscribers have registered")
-
         guard self.isAnyDataCollectionEnabled() else {
-          Logger.logDebug("Data Collection is disabled for all subscribers. Skipping this Session Event")
+          Logger
+            .logDebug(
+              "Data Collection is disabled for all subscribers. Skipping this Session Event"
+            )
           return
         }
 
@@ -124,14 +130,15 @@ private enum GoogleDataTransportConfig {
         self.addEventDataCollectionState(event: event)
 
         self.coordinator.attemptLoggingSessionStart(event: event) { result in
-
         }
       }
     }
   }
 
+  // MARK: - Data Collection
+
   func isAnyDataCollectionEnabled() -> Bool {
-    for subscriber in self.subscribers {
+    for subscriber in subscribers {
       if subscriber.isDataCollectionEnabled {
         return true
       }
@@ -139,18 +146,10 @@ private enum GoogleDataTransportConfig {
     return false
   }
 
-  func getDataCollectionState(_ isDataCollectionEnabled: Bool) -> firebase_appquality_sessions_DataCollectionState {
-    if isDataCollectionEnabled {
-      return firebase_appquality_sessions_DataCollectionState_COLLECTION_ENABLED
-    } else {
-      return firebase_appquality_sessions_DataCollectionState_COLLECTION_DISABLED
-    }
-  }
-
   func addEventDataCollectionState(event: SessionStartEvent) {
-    self.subscribers.forEach { subscriber in
+    subscribers.forEach { subscriber in
       event.set(subscriber: subscriber.sessionsSubscriberName,
-                dataCollectionState: getDataCollectionState(subscriber.isDataCollectionEnabled))
+                isDataCollectionEnabled: subscriber.isDataCollectionEnabled)
     }
   }
 
@@ -173,18 +172,9 @@ private enum GoogleDataTransportConfig {
     // before subscribers, so subscribers will miss the first Notification
     subscriber.onSessionIDChanged(identifiers.sessionID)
 
-    self.subscribers.append(subscriber)
-    self.subscriberPromises[subscriber.sessionsSubscriberName]?.fulfill(())
-//    let allDependenciesSubscribed = self.subscribers.allSatisfy { subscriber in
-//      return SessionsDependencies.dependencies.contains(subscriber.sessionsSubscriberName)
-//    }
-//    if allDependenciesSubscribed {
-//      self.subscribers.forEach { subscriber in
-//        if subscriber.isDataCollectionEnabled {
-//          self.dataCollectionPromise.fulfill(())
-//        }
-//      }
-//    }
+    // Fulfil this subscriber's promise
+    subscribers.append(subscriber)
+    subscriberPromises[subscriber.sessionsSubscriberName]?.fulfill(())
   }
 
   // MARK: - Library conformance
