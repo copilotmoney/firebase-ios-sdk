@@ -337,7 +337,11 @@ std::shared_ptr<GrpcCompletion> GrpcStream::NewCompletion(
                          const std::shared_ptr<GrpcCompletion>& completion) {
         RemoveCompletion(completion);
 
-        if (ok) {
+        if (ok || (completion->status()->ok() && completion->message()->Valid())) {
+          if (!ok) {
+            LOG_DEBUG("GrpcStream('%s'): operation of type %s failed, continuing", this,
+                      completion->type());
+          }
           if (on_success) {
             on_success(completion);
           }
