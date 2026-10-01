@@ -53,7 +53,9 @@ let packageTraits = Set<Trait>([
   .default(enabledTraits: [firestoreTrait.name]),
 ])
 
-let shouldUseSourceFirestore = Context.environment["FIREBASE_SOURCE_FIRESTORE"] != nil
+// copilotmoney: always build Firestore from source so it carries the patch in
+// `Firestore/core/src/remote/grpc_stream.cc`; the prebuilt binary would not.
+let shouldUseSourceFirestore = true
 
 let package = Package(
   name: "Firebase",
