@@ -1,0 +1,56 @@
+name: copilot.firestore_binary
+
+# Builds FirebaseFirestoreInternal.xcframework from this tag's patched Firestore sources and
+# publishes it as a release asset that `Package.swift`'s binary target downloads, so apps skip
+# compiling Firestore, gRPC, abseil and BoringSSL. Upgrade steps: copilot-ios docs/firebase-fork.md.
+#
+# Push a tag named `<upstream tag>-patched.<n>` on a `<upstream tag>-patched` commit to run it.
+
+on:
+  push:
+    tags: ['*-patched.*']
+
+permissions:
+  contents: write
+
+env:
+  # Same as upstream's release.zip.yml: a library links only into apps built with the same or a
+  # newer Xcode, so build with the oldest Xcode any app build uses.
+  MIN_XCODE: Xcode_26.2
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - name: Xcode
+        run: sudo xcode-select -s /Applications/${{ env.MIN_XCODE }}.app/Contents/Developer
+      - uses: ruby/setup-ruby@89f90524b88a01fe6e0b732220432cc6142926af # v1.313.0
+      - name: Setup Bundler
+        run: ./scripts/setup_bundler.sh
+      - name: Build FirebaseFirestoreInternal.xcframework
+        # Firebase 13 podspecs live in SpecsStaging, not CocoaPods trunk; gRPC, abseil, BoringSSL,
+        # leveldb and nanopb still come from trunk.
+        run: |
+          mkdir -p "$RUNNER_TEMP/zip-out"
+          cd ReleaseTooling
+          swift run zip-builder --no-dynamic --no-update-pod-repo --disable-build-dependencies \
+            --local-podspec-path "$GITHUB_WORKSPACE" \
+            --pods FirebaseFirestoreInternal --platforms ios \
+            --disable-carthage-version-check \
+            --custom-spec-repos https://github.com/firebase/SpecsStaging.git \
+            --output-dir "$RUNNER_TEMP/zip-out"
+      - name: Package and check
+        run: scripts/copilot/package_firestore_binary.sh "$RUNNER_TEMP/zip-out" "$RUNNER_TEMP/release"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "$RUNNER_TEMP/release/FirebaseFirestoreInternal.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/release/notes.md"
