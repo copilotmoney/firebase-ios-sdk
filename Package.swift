@@ -53,9 +53,9 @@ let packageTraits = Set<Trait>([
   .default(enabledTraits: [firestoreTrait.name]),
 ])
 
-// copilotmoney: always build Firestore from source so it carries the patch in
-// `Firestore/core/src/remote/grpc_stream.cc`; the prebuilt binary would not.
-let shouldUseSourceFirestore = true
+// copilotmoney: the binary target below is our own build of the patched sources (see
+// `.github/workflows/copilot.firestore_binary.yml`), not Google's.
+let shouldUseSourceFirestore = Context.environment["FIREBASE_SOURCE_FIRESTORE"] != nil
 
 let package = Package(
   name: "Firebase",
@@ -1634,8 +1634,8 @@ func firestoreTargets() -> [Target] {
     } else {
       return .binaryTarget(
         name: "FirebaseFirestoreInternal",
-        url: "https://dl.google.com/firebase/ios/bin/firestore/13.1.1/rc0/FirebaseFirestoreInternal.zip",
-        checksum: "2d6be52d2f387b34a60e92ed8b14b4a9bb06c7b147014e6ed560dc92ca4b09af"
+        url: "https://github.com/copilotmoney/firebase-ios-sdk/releases/download/13.1.1-patched.1/FirebaseFirestoreInternal.zip",
+        checksum: "8f56b506a4e48ecf52673258961f41a5be619b75b663f5430fe1869c5efcbc82"
       )
     }
   }()
